@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #  Blizzard Advanced Systems Administrator Code Challenge
 #  Max Schulberg
 import time
@@ -8,11 +8,14 @@ import os
 from psutil import cpu_times, Process, pid_exists, process_iter
 from statistics import mean
 
+# Length of time per cycle
+cycle = 30
+
 template = "{0:<8}|{1:<24}|{2:<12}|{3:>8.2f}%|{4:>7.0f}M|" 
 htemplate = "{0:8}|{1:24}|{2:12}|{3:8}%|{4:8}|"
-cycle = 5
 
 MB = lambda x: x * 9.5367431640625E-7
+KB = lambda x: x * 0.0009765625
 
 class Proc(object):
     def __init__(self, pid):
@@ -24,7 +27,7 @@ class Proc(object):
             self.created = self.proc.create_time()
     def poll(self, delay=1):
         if not self.proc.is_running():
-            return ( self.pid, self.name + "**DEAD**", '', 0, 0 )
+            return ( self.pid, '**DEAD**' + self.name, self.owner, 0, 0 )
         with self.proc.oneshot():
             self.poll1 = self.proc.cpu_times()
             self.virtual1 = self.proc.memory_info().vms
@@ -65,17 +68,24 @@ def tally(resultlist, field):
 
 def pollcycle(args, cyclelength=cycle):
     print('Please wait while initial data is gathered.  Ctrl-C to exit.')
-    procs = [Proc(pid) for pid in iter_pids(args)]
-    results = {p.pid: [] for p in procs}
+    results = {pid: [] for pid in iter_pids(args)}
     while True: # MAIN LOOP
         start = time.time()
+        procs = [Proc(pid) for pid in iter_pids(args)]
         while time.time() < ( start + cyclelength ):
             for proc in procs:
-                results[proc.pid].append(proc.poll())
+                try:
+                    results[proc.pid].append(proc.poll())
+                except KeyError: # if not yet in result list
+                    results[proc.pid] = [proc.poll()]
+                except KeyboardInterrupt: # allow ctrl-c
+                    sys.exit()
+                except: # don't break if process is dead
+                    pass
         print_header()
-        for proc in procs:  # no sort
+        for proc in procs: 
             print(template.format(proc.pid, proc.name, proc.owner, tally(results[proc.pid], 3), tally(results[proc.pid],4)))
-            results[proc.pid] = [results[proc.pid][-1]] # keep only the last poll in results, so it doesn't drop back to 0 or get huge
+            results[proc.pid] = [results[proc.pid][-1]]  # clear out all but last value
 
 def main():
     if len(sys.argv) == 1:
